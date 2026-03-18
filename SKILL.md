@@ -20,13 +20,27 @@ allowed-tools: Bash
    - `git diff --staged` - see actual changes
    - `git log -3 --oneline` - understand commit style
 
-3. **Write commit message:**
+3. **Run pre-commit checks:**
+   - For each target in `[lint, typecheck]`, check if it exists: `make -n <target> 2>/dev/null`
+   - Run each existing target and note the exit code
+   - If any target exited non-zero:
+     - Tell the user which target(s) failed
+     - Explain that committing without addressing the failures will likely cause upstream PR checks to fail, slowing down the review cycle
+     - Ask: "Do you want to continue with the commit anyway, or stop to address these first?"
+     - If user says stop, halt — do not commit
+     - If user says continue, proceed with the commit
+   - If all targets pass (or no Makefile / no matching targets), proceed silently
+   - Use exit codes only to determine success/failure — do NOT use `git diff` or check for unstaged changes
+   - Do NOT suggest `git add` or imply unstaged changes need to be staged
+   - Never frame a dirty working tree as problematic
+
+4. **Write commit message:**
    - **Title:** Less than 80 characters, imperative mood, no period
    - **Body:** Bulleted list of changes (one bullet per logical change)
    - When mentioning functionality changes, don't mention tests (assumed)
    - Focus on what changed, not implementation details
 
-4. **Commit with attribution:**
+5. **Commit with attribution:**
    Use your actual model name from system context.
    ```bash
    git commit -m "$(cat <<'EOF'
@@ -41,9 +55,7 @@ allowed-tools: Bash
    )"
    ```
 
-5. **After commit:**
-   - Run `git log -n1` to show the actual commit message
-   - Run `git status` in the CURRENT LOCATION ONLY
+6. **After commit:**
    - If a specific submodule was requested, STOP HERE
    - Do NOT check for or report staged changes in parent repository
    - Do NOT suggest or perform additional commits
@@ -52,7 +64,7 @@ allowed-tools: Bash
 
 - **NEVER run `git add`** - only commit what's already staged
 - **NEVER push** - user does this explicitly
-- **NEVER use `--amend`** unless explicitly requested
+- **NEVER use `--amend`**
 - **STRICT SCOPE:** When a submodule is specified, commit ONLY in that submodule and STOP. Never commit other changes, even if staged in parent repository.
 
 ## Examples
