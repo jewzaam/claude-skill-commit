@@ -34,7 +34,15 @@ The goal is to minimize failures caught after pushing, without introducing signi
    - `git log -3 --oneline` — understand commit style
 
 3. **Run pre-commit checks:**
-   - For each target in `[lint, typecheck]`, probe whether it exists by running `make -n <target>` as its own Bash call. If `make` itself isn't available (command not found), skip pre-commit checks entirely.
+
+   **a. Format check (blocking):**
+   - Check if `format-check` target exists by running `make -n format-check` as its own Bash call. If `make` itself isn't available (command not found), skip pre-commit checks entirely.
+   - If it exists, run `make format-check`
+   - If it exits non-zero: tell the user which files need formatting, suggest running `make format` to fix them, and **stop — do not commit**
+   - If it passes (or the target does not exist), proceed
+
+   **b. Lint and typecheck (advisory):**
+   - For each target in `[lint, typecheck]`, probe whether it exists by running `make -n <target>` as its own Bash call.
    - Run each existing target as its own Bash call. The Bash tool reports exit codes directly in its response — check success/failure from that. Don't suppress stderr; the full output (stdout + stderr) provides useful context for diagnosing failures.
    - Only violation-based checks belong here (lint errors, type errors) — never run targets that modify files (like `format` or `fix`), because they change staged content and create a confusing mismatch between what was staged and what's on disk.
    - If any target exits non-zero:
@@ -44,6 +52,8 @@ The goal is to minimize failures caught after pushing, without introducing signi
      - If user says stop, halt — do not commit
      - If user says continue, proceed
    - If all targets pass (or none exist), proceed silently
+
+   **General rules for pre-commit checks:**
    - The working tree state after checks is irrelevant — only exit codes matter. Don't run `git diff`, don't check for unstaged changes, don't suggest `git add`, don't comment on a dirty working tree.
 
 4. **Write commit message:**
