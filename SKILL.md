@@ -23,45 +23,54 @@ The goal is to minimize failures caught after pushing, without introducing signi
 
 ## Process
 
-1. **Determine working directory and scope:**
+1. **Step 1 — Determine working directory and scope:**
    - If no arguments: work in current directory, commit all staged changes
    - If argument provided (submodule name): check if it's a submodule, cd into it, and scope all work to that submodule only — do not touch the parent repository or other submodules
-   - If nothing is staged (`git status` shows no "Changes to be committed"), tell the user and stop. Do not proceed.
+   - → Proceed to Step 2.
 
-2. **Review staged changes:**
+2. **Step 2 — Gather context (parallel):**
+   Run all three commands as parallel Bash tool calls in a single message:
    - `git status` — see staged files
    - `git diff --staged` — see actual changes
    - `git log -3 --oneline` — understand commit style
+   - If nothing is staged (`git status` output has no "Changes to be committed"), tell the user and STOP.
+   - → Proceed to Step 3.
 
-3. **Run pre-commit checks:**
+3. **Step 3 — Probe pre-commit targets (parallel):**
+   Run all three probes as parallel Bash tool calls in a single message:
+   - `make -n format-check`
+   - `make -n lint`
+   - `make -n typecheck`
+   - If any probe's output contains "command not found" (meaning `make` isn't installed), → skip to Step 6.
+   - A probe that fails for other reasons (e.g., "No rule to make target") means that specific target doesn't exist but `make` is available — only run targets whose probes succeeded.
+   - If no probes succeeded, → skip to Step 6.
+   - → Proceed to Step 4.
 
-   **a. Format check (blocking):**
-   - Check if `format-check` target exists by running `make -n format-check` as its own Bash call. If `make` itself isn't available (command not found), skip pre-commit checks entirely.
-   - If it exists, run `make format-check`
-   - If it exits non-zero: tell the user which files need formatting, suggest running `make format` to fix them, and **stop — do not commit**
-   - If it passes (or the target does not exist), proceed
+4. **Step 4 — Format check (blocking):**
+   Only if the `format-check` probe succeeded in Step 3. Otherwise → skip to Step 5.
+   - Run `make format-check`
+   - If it exits non-zero: tell the user which files need formatting, suggest running `make format` to fix them, and STOP — do not commit.
+   - If it passes, → proceed to Step 5.
 
-   **b. Lint and typecheck (advisory):**
-   - For each target in `[lint, typecheck]`, probe whether it exists by running `make -n <target>` as its own Bash call.
-   - Run each existing target as its own Bash call. The Bash tool reports exit codes directly in its response — check success/failure from that. Don't suppress stderr; the full output (stdout + stderr) provides useful context for diagnosing failures.
+5. **Step 5 — Lint and typecheck (parallel, advisory):**
+   Run all existing targets (from successful probes in Step 3) as parallel Bash tool calls in a single message. The Bash tool reports exit codes directly in its response — check success/failure from that. Don't suppress stderr; the full output (stdout + stderr) provides useful context for diagnosing failures.
    - Only violation-based checks belong here (lint errors, type errors) — never run targets that modify files (like `format` or `fix`), because they change staged content and create a confusing mismatch between what was staged and what's on disk.
    - If any target exits non-zero:
      - Tell the user which target(s) failed
      - Explain that committing without addressing the failures will likely cause upstream PR checks to fail, slowing down the review cycle
      - Ask: "Do you want to continue with the commit anyway, or stop to address these first?"
-     - If user says stop, halt — do not commit
-     - If user says continue, proceed
-   - If all targets pass (or none exist), proceed silently
-
-   **General rules for pre-commit checks:**
+     - If user says stop, STOP — do not commit
+     - If user says continue, → proceed to Step 6
+   - If all targets pass (or none had successful probes), → proceed to Step 6.
    - The working tree state after checks is irrelevant — only exit codes matter. Don't run `git diff`, don't check for unstaged changes, don't suggest `git add`, don't comment on a dirty working tree.
 
-4. **Write commit message:**
+6. **Step 6 — Write commit message:**
    - **Title:** Less than 80 characters, imperative mood, no period
    - **Body:** Bulleted list of changes (one bullet per logical change)
    - Focus on what changed, not implementation details. Don't mention tests (assumed).
+   - → Proceed to Step 7.
 
-5. **Commit with attribution:**
+7. **Step 7 — Commit with attribution:**
    Use your actual model name from system context.
    ```bash
    git commit -m "$(cat <<'EOF'
@@ -75,9 +84,10 @@ The goal is to minimize failures caught after pushing, without introducing signi
    EOF
    )"
    ```
+   - → Proceed to Step 8.
 
-6. **After commit:**
-   - STOP. Do not check the parent repository, suggest additional commits, or show post-commit output. The user will inspect the result themselves if needed.
+8. **Step 8 — STOP.**
+   Do not check the parent repository, suggest additional commits, or show post-commit output. The user will inspect the result themselves if needed.
 
 ## Command hygiene
 
@@ -98,34 +108,33 @@ These constraints exist because the user's environment uses hooks to inspect Bas
 ### Scoped commit to submodule
 ```
 User: /commit standards
-Skill:
-  - cd standards
-  - git status → staged changes exist
-  - git diff --staged, git log -3 --oneline
-  - make -n lint → exists, make lint → exit 0
-  - make -n typecheck → no such target, skip
-  - git commit (with message + attribution)
-  - STOP
+Step 1: cd standards
+Step 2 (parallel): git status, git diff --staged, git log -3 --oneline → staged changes exist → Step 3
+Step 3 (parallel): make -n format-check → no such target, make -n lint → exists, make -n typecheck → no such target → Step 5
+Step 4: skipped (no format-check) → Step 5
+Step 5: make lint → exit 0 → Step 6
+Step 6–7: write message, git commit (with attribution) → Step 8
+Step 8: STOP
 ```
 
 ### Nothing staged
 ```
 User: /commit
-Skill:
-  - git status → no staged changes
-  - Tell user: "Nothing is staged."
-  - STOP
+Step 1: current directory
+Step 2 (parallel): git status, git diff --staged, git log -3 --oneline → no staged changes
+Tell user: "Nothing is staged." → STOP
 ```
 
 ### Lint failure, user continues
 ```
 User: /commit
-Skill:
-  - git status → staged changes exist
-  - git diff --staged, git log -3 --oneline
-  - make lint → exit 1 (lint violations reported in output)
-  - Tell user: "lint failed — committing without fixing will likely fail CI. Continue or stop?"
-  - User: "continue"
-  - git commit (with message + attribution)
-  - STOP
+Step 1: current directory
+Step 2 (parallel): git status, git diff --staged, git log -3 --oneline → staged changes exist → Step 3
+Step 3 (parallel): make -n format-check → exists, make -n lint → exists, make -n typecheck → exists → Step 4
+Step 4: make format-check → exit 0 → Step 5
+Step 5 (parallel): make lint → exit 1, make typecheck → exit 0
+Tell user: "lint failed — committing without fixing will likely fail CI. Continue or stop?"
+User: "continue" → Step 6
+Step 6–7: write message, git commit (with attribution) → Step 8
+Step 8: STOP
 ```
