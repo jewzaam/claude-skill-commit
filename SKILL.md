@@ -19,7 +19,7 @@ Nothing else. No `git add`, `git push`, `git commit --amend`, `make format`, or 
 
 ## Why pre-commit checks exist
 
-The goal is to minimize failures caught after pushing, without introducing significant delay at commit time. CI pipelines catch everything — lint, typecheck, tests, coverage — but discovering a failure after push slows down the review cycle. Fast, local checks (lint, typecheck) catch the most common issues cheaply. Unit tests and coverage are assumed to be expensive operations that CI handles; running them here would add unacceptable delay for marginal benefit.
+The goal is to minimize failures caught after pushing, without introducing significant delay at commit time. CI pipelines catch everything — lint, typecheck, tests, coverage — but discovering a failure after push slows down the review cycle. Fast, local checks (lint, typecheck, markdown-lint, link validation) catch the most common issues cheaply. Unit tests and coverage are assumed to be expensive operations that CI handles; running them here would add unacceptable delay for marginal benefit.
 
 ## Process
 
@@ -39,11 +39,11 @@ The goal is to minimize failures caught after pushing, without introducing signi
 3. **Step 3 — Discover available pre-commit targets:**
    Run a single Bash call:
    ```bash
-   make -p -n | grep -E "^(format-check|lint|typecheck):"
+   make -p -n | grep -E "^(format-check|lint|typecheck|markdown-lint|links):"
    ```
    - If the exit code is non-zero (`make` not installed or no Makefile), → skip to Step 5.
    - The output lines are the targets that exist. Collect them.
-   - If none of the three exist, → skip to Step 5.
+   - If none exist, → skip to Step 5.
    - → Proceed to Step 4.
 
 4. **Step 4 — Run pre-commit checks (blocking):**
