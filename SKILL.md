@@ -19,7 +19,7 @@ Nothing else. No `git add`, `git push`, `git commit --amend`, `make format`, or 
 
 ## Why pre-commit checks exist
 
-The goal is to minimize failures caught after pushing, without introducing significant delay at commit time. CI pipelines catch everything — lint, typecheck, tests, coverage — but discovering a failure after push slows down the review cycle. Fast, local checks (lint, typecheck) catch the most common issues cheaply. Unit tests and coverage are assumed to be expensive operations that CI handles; running them here would add unacceptable delay for marginal benefit.
+The goal is to minimize failures caught after pushing, without introducing significant delay at commit time. CI pipelines catch everything — lint, typecheck, tests, coverage — but discovering a failure after push slows down the review cycle. Fast, local checks (lint, typecheck, markdown-lint, link validation) catch the most common issues cheaply. Unit tests and coverage are assumed to be expensive operations that CI handles; running them here would add unacceptable delay for marginal benefit.
 
 ## Process
 
@@ -41,8 +41,8 @@ The goal is to minimize failures caught after pushing, without introducing signi
    - If it exits non-zero: tell the user which files need formatting, suggest running `make format` to fix them, and **stop — do not commit**
    - If it passes (or the target does not exist), proceed
 
-   **b. Lint and typecheck (advisory):**
-   - For each target in `[lint, typecheck]`, probe whether it exists by running `make -n <target>` as its own Bash call.
+   **b. Lint, typecheck, and documentation checks (advisory):**
+   - For each target in `[lint, typecheck, markdown-lint, links]`, probe whether it exists by running `make -n <target>` as its own Bash call.
    - Run each existing target as its own Bash call. The Bash tool reports exit codes directly in its response — check success/failure from that. Don't suppress stderr; the full output (stdout + stderr) provides useful context for diagnosing failures.
    - Only violation-based checks belong here (lint errors, type errors) — never run targets that modify files (like `format` or `fix`), because they change staged content and create a confusing mismatch between what was staged and what's on disk.
    - If any target exits non-zero:
