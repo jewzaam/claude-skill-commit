@@ -29,15 +29,22 @@ The goal is to minimize failures caught after pushing, without introducing signi
    - If argument provided (submodule name): check if it's a submodule, cd into it, and scope all work to that submodule only — do not touch the parent repository or other submodules
    - → Proceed to Step 2.
 
-2. **Step 2 — Gather context (parallel):**
+2. **Step 2 — Check for staged changes:**
+   Run a single Bash call:
+   ```bash
+   git diff --staged --name-only
+   ```
+   - **Read the output.** If the output is empty (no filenames listed), tell the user "Nothing is staged" and STOP. Do not proceed.
+   - If filenames are listed, → proceed to Step 2b.
+
+3. **Step 2b — Gather context (parallel):**
    Run all three commands as parallel Bash tool calls in a single message:
-   - `git status` — see staged files
    - `git diff --staged` — see actual changes
    - `git log -3 --oneline` — understand commit style
-   - If nothing is staged (`git status` output has no "Changes to be committed"), tell the user and STOP.
+   - `git status` — see overall working tree state
    - → Proceed to Step 3.
 
-3. **Step 3 — Discover available pre-commit targets:**
+4. **Step 3 — Discover available pre-commit targets:**
    Run a single Bash call:
    ```bash
    make -p -n | grep -E "^(format-check|lint|typecheck|markdown-lint|links):"
@@ -47,14 +54,14 @@ The goal is to minimize failures caught after pushing, without introducing signi
    - If none exist, → skip to Step 5.
    - → Proceed to Step 4.
 
-4. **Step 4 — Run pre-commit checks (blocking):**
+5. **Step 4 — Run pre-commit checks (blocking):**
    Run all targets that had successful probes in Step 3 in a single `make` call (e.g., `make format-check lint typecheck`). Don't suppress stderr; the full output (stdout + stderr) provides useful context for diagnosing failures.
    - Only violation-based checks belong here — never run targets that modify files (like `format` or `fix`), because they change staged content and create a confusing mismatch between what was staged and what's on disk.
    - If the command exits non-zero: tell the user what failed and STOP — do not commit.
    - The working tree state after checks is irrelevant — only exit codes matter. Don't run `git diff`, don't check for unstaged changes, don't suggest `git add`, don't comment on a dirty working tree.
    - → Proceed to Step 5.
 
-5. **Step 5 — Write commit message and commit:**
+6. **Step 5 — Write commit message and commit:**
    - **Title:** Less than 80 characters, imperative mood, no period
    - **Body:** Bulleted list of changes (one bullet per logical change)
    - Focus on what changed, not implementation details. Don't mention tests (assumed).
@@ -73,7 +80,7 @@ The goal is to minimize failures caught after pushing, without introducing signi
    ```
    - → Proceed to Step 6.
 
-6. **Step 6 — STOP.**
+7. **Step 6 — STOP.**
    Do not check the parent repository, suggest additional commits, or show post-commit output. The user will inspect the result themselves if needed.
 
 ## Command hygiene
@@ -95,7 +102,8 @@ These constraints exist because the user's environment uses hooks to inspect Bas
 ```
 User: /commit standards
 Step 1: cd standards
-Step 2 (parallel): git status, git diff --staged, git log -3 --oneline → staged changes exist → Step 3
+Step 2: git diff --staged --name-only → filenames listed → Step 2b
+Step 2b (parallel): git diff --staged, git log -3 --oneline, git status → Step 3
 Step 3: make -p -n | grep ... → lint exists → Step 4
 Step 4: make lint → exit 0 → Step 5
 Step 5: write message, git commit (with attribution) → Step 6
@@ -106,7 +114,7 @@ Step 6: STOP
 ```
 User: /commit
 Step 1: current directory
-Step 2 (parallel): git status, git diff --staged, git log -3 --oneline → no staged changes
+Step 2: git diff --staged --name-only → empty output
 Tell user: "Nothing is staged." → STOP
 ```
 
@@ -114,7 +122,8 @@ Tell user: "Nothing is staged." → STOP
 ```
 User: /commit
 Step 1: current directory
-Step 2 (parallel): git status, git diff --staged, git log -3 --oneline → staged changes exist → Step 3
+Step 2: git diff --staged --name-only → filenames listed → Step 2b
+Step 2b (parallel): git diff --staged, git log -3 --oneline, git status → Step 3
 Step 3: make -p -n | grep ... → format-check, lint, typecheck all exist → Step 4
 Step 4: make format-check lint typecheck → exit 1 (lint violations) → STOP
 ```
