@@ -2,10 +2,14 @@
 name: commit
 description: Commit staged changes with concise messages and proper attribution. This skill is invoked explicitly by the user via /commit — do not trigger it automatically.
 disable-model-invocation: true
-allowed-tools: Bash
+allowed-tools: Bash(git commit -m *)
 ---
 
 # Commit Skill
+
+## Staged files (auto-detected)
+
+!`git diff --staged --name-only`
 
 ## Permitted commands
 
@@ -13,7 +17,7 @@ This skill only needs `git` and `make`. Specifically:
 
 - `git status`, `git diff --staged`, `git log` — understand what's staged and the commit style
 - `git commit` — create the commit
-- `make -p -n` piped through `grep` — discover available targets
+- `make -p -n` — discover available targets (scan the output yourself, don't pipe through grep)
 - `make <targets>` — run pre-commit checks
 
 Nothing else. No `git add`, `git push`, `git commit --amend`, `make format`, or any other commands.
@@ -30,11 +34,8 @@ The goal is to minimize failures caught after pushing, without introducing signi
    - → Proceed to Step 2.
 
 2. **Step 2 — Check for staged changes:**
-   Run a single Bash call:
-   ```bash
-   git diff --staged --name-only
-   ```
-   - **Read the output.** If the output is empty (no filenames listed), tell the user "Nothing is staged" and STOP. Do not proceed.
+   Look at the **Staged files (auto-detected)** section above.
+   - If the section is empty (no filenames listed), tell the user "Nothing is staged" and STOP. Do not proceed.
    - If filenames are listed, → proceed to Step 2b.
 
 3. **Step 2b — Gather context (parallel):**
@@ -47,10 +48,10 @@ The goal is to minimize failures caught after pushing, without introducing signi
 4. **Step 3 — Discover available pre-commit targets:**
    Run a single Bash call:
    ```bash
-   make -p -n | grep -E "^(format-check|lint|typecheck|markdown-lint|links):"
+   make -p -n
    ```
    - If the exit code is non-zero (`make` not installed or no Makefile), → skip to Step 5.
-   - The output lines are the targets that exist. Collect them.
+   - Scan the output for lines matching `^(format-check|lint|typecheck|markdown-lint|links):` — those are the targets that exist.
    - If none exist, → skip to Step 5.
    - → Proceed to Step 4.
 
@@ -102,9 +103,9 @@ These constraints exist because the user's environment uses hooks to inspect Bas
 ```
 User: /commit standards
 Step 1: cd standards
-Step 2: git diff --staged --name-only → filenames listed → Step 2b
+Step 2: Staged files section shows filenames → Step 2b
 Step 2b (parallel): git diff --staged, git log -3 --oneline, git status → Step 3
-Step 3: make -p -n | grep ... → lint exists → Step 4
+Step 3: make -p -n → scan output → lint exists → Step 4
 Step 4: make lint → exit 0 → Step 5
 Step 5: write message, git commit (with attribution) → Step 6
 Step 6: STOP
@@ -114,7 +115,7 @@ Step 6: STOP
 ```
 User: /commit
 Step 1: current directory
-Step 2: git diff --staged --name-only → empty output
+Step 2: Staged files section is empty
 Tell user: "Nothing is staged." → STOP
 ```
 
@@ -122,8 +123,8 @@ Tell user: "Nothing is staged." → STOP
 ```
 User: /commit
 Step 1: current directory
-Step 2: git diff --staged --name-only → filenames listed → Step 2b
+Step 2: Staged files section shows filenames → Step 2b
 Step 2b (parallel): git diff --staged, git log -3 --oneline, git status → Step 3
-Step 3: make -p -n | grep ... → format-check, lint, typecheck all exist → Step 4
+Step 3: make -p -n → scan output → format-check, lint, typecheck all exist → Step 4
 Step 4: make format-check lint typecheck → exit 1 (lint violations) → STOP
 ```
