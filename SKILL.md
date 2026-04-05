@@ -11,10 +11,6 @@ allowed-tools: Bash(git commit -m *)
 
 !`pwd`
 
-## Pre-Commit Targets (auto-detected)
-
-!`make -p -n | grep -E "^(format-check|lint|typecheck|markdown-lint|links):" || true`
-
 ## Staged files (auto-detected)
 
 !`git diff --staged --name-only || true`
@@ -27,19 +23,34 @@ allowed-tools: Bash(git commit -m *)
 
 !`git status --short || true`
 
-## Submodule context (auto-detected)
+## Pre-commit check: format-check (auto-detected)
 
-!`git submodule foreach 'echo "=== staged files ===" && git diff --staged --name-only && echo "=== recent commits ===" && git log -3 --oneline && echo "=== working tree ===" && git status --short && echo "=== pre-commit targets ===" && make -p -n 2>/dev/null | grep -E "^(format-check|lint|typecheck|markdown-lint|links):" || true' 2>/dev/null || true`
+!`make format-check 2>/dev/null || true`
+
+## Pre-commit check: lint (auto-detected)
+
+!`make lint 2>/dev/null || true`
+
+## Pre-commit check: typecheck (auto-detected)
+
+!`make typecheck 2>/dev/null || true`
+
+## Pre-commit check: markdown-lint (auto-detected)
+
+!`make markdown-lint 2>/dev/null || true`
+
+## Pre-commit check: links (auto-detected)
+
+!`make links 2>/dev/null || true`
 
 ## Permitted commands
 
 Most context is gathered by auto-detected sections above. The only Bash tool calls this skill needs are:
 
 - `git diff --staged` — see actual changes (too large to auto-detect)
-- `make <targets>` — run pre-commit checks
 - `git commit` — create the commit
 
-Nothing else. No `git add`, `git push`, `git commit --amend`, `make format`, `make -p -n`, or any other commands.
+Nothing else. No `git add`, `git push`, `git commit --amend`, `make`, or any other commands.
 
 ## Why pre-commit checks exist
 
@@ -48,8 +59,7 @@ The goal is to minimize failures caught after pushing, without introducing signi
 ## Process
 
 1. **Step 1 — Determine working directory and scope:**
-   - If no arguments: use the **Current Working Directory (auto-detected)** section above
-   - If argument provided (submodule name): check if it's a submodule, cd into it, and scope all work to that submodule only — do not touch the parent repository or other submodules. Use the **Submodule context (auto-detected)** section for that submodule's staged files, targets, commit style, and working tree state.
+   - Use the **Current Working Directory (auto-detected)** section above. No arguments accepted.
    - → Proceed to Step 2.
 
 2. **Step 2 — Check for staged changes:**
@@ -62,20 +72,13 @@ The goal is to minimize failures caught after pushing, without introducing signi
    - `git diff --staged` — see actual changes (commit style and working tree state are already in auto-detected sections above)
    - → Proceed to Step 3.
 
-4. **Step 3 — Check available pre-commit targets:**
-   Look at the **Pre-Commit Targets (auto-detected)** section above.
-   - If the section is empty (no targets listed), → skip to Step 5.
-   - The listed targets are what exist. Collect them.
-   - → Proceed to Step 4.
+4. **Step 3 — Check pre-commit results:**
+   Look at the **Pre-commit check** auto-detected sections above. For each one:
+   - Empty output → target doesn't exist or passed cleanly. Proceed.
+   - Non-empty output with violation details → tell the user what failed and STOP. Do not commit.
+   - → If all checks are clean, proceed to Step 4.
 
-5. **Step 4 — Run pre-commit checks (blocking):**
-   Run all targets from Step 3 in a single `make` call (e.g., `make format-check lint typecheck`). Don't suppress stderr; the full output (stdout + stderr) provides useful context for diagnosing failures.
-   - Only violation-based checks belong here — never run targets that modify files (like `format` or `fix`), because they change staged content and create a confusing mismatch between what was staged and what's on disk.
-   - If the command exits non-zero: tell the user what failed and STOP — do not commit.
-   - The working tree state after checks is irrelevant — only exit codes matter. Don't run `git diff`, don't check for unstaged changes, don't suggest `git add`, don't comment on a dirty working tree.
-   - → Proceed to Step 5.
-
-6. **Step 5 — Write commit message and commit:**
+5. **Step 4 — Write commit message and commit:**
    - **Title:** Less than 80 characters, imperative mood, no period
    - **Body:** Bulleted list of changes (one bullet per logical change)
    - Focus on what changed, not implementation details. Don't mention tests (assumed).
@@ -92,10 +95,10 @@ The goal is to minimize failures caught after pushing, without introducing signi
    EOF
    )"
    ```
-   - → Proceed to Step 6.
+   - → Proceed to Step 5.
 
-7. **Step 6 — STOP.**
-   Do not check the parent repository, suggest additional commits, or show post-commit output. The user will inspect the result themselves if needed.
+6. **Step 5 — STOP.**
+   Do not suggest additional commits or show post-commit output. The user will inspect the result themselves if needed.
 
 ## Command hygiene
 
@@ -112,18 +115,6 @@ These constraints exist because the user's environment uses hooks to inspect Bas
 
 ## Examples
 
-### Scoped commit to submodule
-```
-User: /commit standards
-Step 1: cd standards — use Submodule context section for "standards"
-Step 2: Submodule staged files show filenames → Step 2b
-Step 2b: git diff --staged → Step 3
-Step 3: Submodule pre-commit targets show lint → Step 4
-Step 4: make lint → exit 0 → Step 5
-Step 5: write message, git commit (with attribution) → Step 6
-Step 6: STOP
-```
-
 ### Nothing staged
 ```
 User: /commit
@@ -138,6 +129,16 @@ User: /commit
 Step 1: auto-detected directory
 Step 2: Staged files section shows filenames → Step 2b
 Step 2b: git diff --staged → Step 3
-Step 3: Pre-Commit Targets section shows format-check, lint, typecheck → Step 4
-Step 4: make format-check lint typecheck → exit 1 (lint violations) → STOP
+Step 3: Pre-commit check: lint section shows violations → STOP
+```
+
+### Clean commit
+```
+User: /commit
+Step 1: auto-detected directory
+Step 2: Staged files section shows filenames → Step 2b
+Step 2b: git diff --staged → Step 3
+Step 3: All pre-commit check sections are empty → Step 4
+Step 4: write message, git commit (with attribution) → Step 5
+Step 5: STOP
 ```
