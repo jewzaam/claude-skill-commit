@@ -79,17 +79,18 @@ The goal is to minimize failures caught after pushing, without introducing signi
    - → If all checks are clean, proceed to Step 4.
 
 5. **Step 4 — Write commit message and commit:**
-   - **Title:** Less than 80 characters, imperative mood, no period
+   - **Title:** [Conventional Commits](https://www.conventionalcommits.org/) format, 72 characters or less, imperative mood, no period
+     - Prefix with the appropriate type: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
    - **Body:** Bulleted list of changes (one bullet per logical change)
    - Focus on what changed, not implementation details. Don't mention tests (assumed).
+   - Reference issues or PRs when the branch name contains an obvious reference (e.g., `fix/123`, `PROJ-456`).
    - Use your actual model name from system context.
    ```bash
    git commit -m "$(cat <<'EOF'
-   Short title (< 80 chars)
+   feat: add retry logic for API timeouts
 
-   - First change
-   - Second change
-   - Third change
+   - Add exponential backoff to HTTP client
+   - Set max retries to 3
 
    Assisted-by: Claude Code (<your-model-name>)
    EOF
@@ -139,6 +140,7 @@ Step 1: auto-detected directory
 Step 2: Staged files section shows filenames → Step 2b
 Step 2b: git diff --staged → Step 3
 Step 3: All pre-commit check sections are empty → Step 4
-Step 4: write message, git commit (with attribution) → Step 5
+Step 4: Staged changes are docs → type is "docs"
+        Write: "docs: clarify retry configuration" with body, git commit → Step 5
 Step 5: STOP
 ```
