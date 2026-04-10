@@ -2,7 +2,7 @@
 name: commit
 description: Commit staged changes with concise messages and proper attribution. This skill is invoked explicitly by the user via /commit — do not trigger it automatically.
 disable-model-invocation: true
-allowed-tools: Bash(git commit -m *)
+allowed-tools: Bash(git diff --staged), Bash(git commit -m *)
 ---
 
 # Commit Skill
@@ -23,25 +23,33 @@ allowed-tools: Bash(git commit -m *)
 
 !`git status --short || true`
 
-## Pre-commit check: format-check (auto-detected)
+## Pre-commit check mode (auto-detected)
 
-!`make format-check 2>/dev/null || true`
+!`[ -f .pre-commit-config.yaml ] && echo "pre-commit" || echo "make-fallback"`
 
-## Pre-commit check: lint (auto-detected)
+## Pre-commit checks: pre-commit (auto-detected)
 
-!`make lint 2>/dev/null || true`
+!`pre-commit run --all-files 2>&1 || true`
 
-## Pre-commit check: typecheck (auto-detected)
+## Pre-commit checks: format-check (auto-detected)
 
-!`make typecheck 2>/dev/null || true`
+!`[ ! -f .pre-commit-config.yaml ] && make format-check 2>/dev/null || true`
 
-## Pre-commit check: markdown-lint (auto-detected)
+## Pre-commit checks: lint (auto-detected)
 
-!`make markdown-lint 2>/dev/null || true`
+!`[ ! -f .pre-commit-config.yaml ] && make lint 2>/dev/null || true`
 
-## Pre-commit check: links (auto-detected)
+## Pre-commit checks: typecheck (auto-detected)
 
-!`make links 2>/dev/null || true`
+!`[ ! -f .pre-commit-config.yaml ] && make typecheck 2>/dev/null || true`
+
+## Pre-commit checks: markdown-lint (auto-detected)
+
+!`[ ! -f .pre-commit-config.yaml ] && make markdown-lint 2>/dev/null || true`
+
+## Pre-commit checks: links (auto-detected)
+
+!`[ ! -f .pre-commit-config.yaml ] && make links 2>/dev/null || true`
 
 ## Permitted commands
 
@@ -55,6 +63,8 @@ Nothing else. No `git add`, `git push`, `git commit --amend`, `make`, or any oth
 ## Why pre-commit checks exist
 
 The goal is to minimize failures caught after pushing, without introducing significant delay at commit time. CI pipelines catch everything — lint, typecheck, tests, coverage — but discovering a failure after push slows down the review cycle. Fast, local checks (lint, typecheck, markdown-lint, link validation) catch the most common issues cheaply. Unit tests and coverage are assumed to be expensive operations that CI handles; running them here would add unacceptable delay for marginal benefit.
+
+When a `.pre-commit-config.yaml` exists, `pre-commit run --all-files` replaces the individual make targets. This matches CI behavior and covers repos where make targets don't exist. The `--all-files` flag is deliberate — it matches how CI runs pre-commit, catching issues in files that interact with unchanged files.
 
 ## Process
 
@@ -73,7 +83,7 @@ The goal is to minimize failures caught after pushing, without introducing signi
    - → Proceed to Step 3.
 
 4. **Step 3 — Check pre-commit results:**
-   Look at the **Pre-commit check** auto-detected sections above. For each one:
+   Look at the **Pre-commit checks** auto-detected sections above. For each one:
    - Empty output → target doesn't exist or passed cleanly. Proceed.
    - Non-empty output with violation details → tell the user what failed and STOP. Do not commit.
    - → If all checks are clean, proceed to Step 4.
@@ -130,7 +140,7 @@ User: /commit
 Step 1: auto-detected directory
 Step 2: Staged files section shows filenames → Step 2b
 Step 2b: git diff --staged → Step 3
-Step 3: Pre-commit check: lint section shows violations → STOP
+Step 3: Pre-commit checks: lint section shows violations → STOP
 ```
 
 ### Clean commit
@@ -139,7 +149,7 @@ User: /commit
 Step 1: auto-detected directory
 Step 2: Staged files section shows filenames → Step 2b
 Step 2b: git diff --staged → Step 3
-Step 3: All pre-commit check sections are empty → Step 4
+Step 3: All pre-commit checks sections are empty → Step 4
 Step 4: Staged changes are docs → type is "docs"
         Write: "docs: clarify retry configuration" with body, git commit → Step 5
 Step 5: STOP

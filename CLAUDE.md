@@ -1,10 +1,12 @@
 # claude-skill-commit
 
-Claude Code skill for `/commit`. Single-file skill — all behavior is defined in `SKILL.md`.
+Claude Code skills for `/commit` and `/commit-act`. Each skill is a
+self-contained SKILL.md in its own subdirectory.
 
 ## Structure
 
-- `SKILL.md` — skill definition (the only file that matters)
+- `commit/SKILL.md` — `/commit` skill (local pre-commit detection, make fallback)
+- `commit-act/SKILL.md` — `/commit-act` skill (CI-faithful checks via act)
 - `Plan-multi-commit-support.md` — design doc for future `/commit-plan` skill
 
 ## No build system
