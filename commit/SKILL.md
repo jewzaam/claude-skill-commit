@@ -2,7 +2,7 @@
 name: commit
 description: Commit staged changes with concise messages and proper attribution. This skill is invoked explicitly by the user via /commit — do not trigger it automatically.
 disable-model-invocation: true
-allowed-tools: Bash(git diff --staged), Bash(git commit -m *)
+allowed-tools: Bash(git diff --staged), Bash(git commit -m *), Bash(pre-commit run --all-files)
 ---
 
 # Commit Skill
