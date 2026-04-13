@@ -38,6 +38,16 @@
 
 set -u
 
+# ---- Global lock -------------------------------------------------------------
+# Serializes /commit invocations across all repos. Required because act names
+# containers from workflow+job only (no repo path), so concurrent runs in repos
+# with identically named workflows would collide. flock blocks until the lock is
+# available and auto-releases on exit (fd close).
+LOCKFILE="/tmp/claude-commit-skill.lock"
+exec {lock_fd}>"$LOCKFILE" || exit 1
+flock "$lock_fd" || { echo "ERROR: flock() failed: $?" >&2; exit 1; }
+trap "flock -u $lock_fd" EXIT
+
 LOGDIR=".tmp-commit-skill"
 IMG="docker.io/catthehacker/ubuntu:act-22.04@sha256:d83455c10c9a31c9c944a4c5628360c6c374983fa6616bd2439ab88b05ae2046"
 LOGFILE_TAIL_LINES=30

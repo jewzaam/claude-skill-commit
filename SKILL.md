@@ -1,13 +1,13 @@
 ---
 name: commit
-description: Run validation locally for staged changes via act, `make check`, or a user-confirmed bare commit, then write a Conventional Commits message and commit. Invoked explicitly by the user via /commit — do not trigger it automatically.
+description: Run validation locally for staged changes via act or `make check`, then write a Conventional Commits message and commit. When no validation engine applies, commit directly. Invoked explicitly by the user via /commit — do not trigger it automatically.
 disable-model-invocation: true
 allowed-tools: Bash(git diff --staged), Bash(git commit -m *), Bash(~/.claude/skills/commit/scripts/detect-checks.sh)
 ---
 
 # Commit Skill
 
-Run validation locally for staged changes, then commit with a Conventional Commits message. Validation is chosen and executed deterministically by `scripts/detect-checks.sh`, which cascades through three modes: **act** over every `pull_request`-triggered job in the repo's `.github/workflows/`, **`make check`** for repos that declare validation via Makefile (the user's `~/source/standards/` non-mutating convention), or a **user-confirmed bare commit** for repos that declare neither. The skill itself never decides what to run and never orchestrates validation — the script is the engine. Claude only reads the result, surfaces the log directory to the user for analysis, routes user consent via `AskUserQuestion` where explicit acknowledgment is needed, writes the commit message, and commits.
+Run validation locally for staged changes, then commit with a Conventional Commits message. Validation is chosen and executed deterministically by `scripts/detect-checks.sh`, which cascades through three modes: **act** over every `pull_request`-triggered job in the repo's `.github/workflows/`, **`make check`** for repos that declare validation via Makefile (the user's `~/source/standards/` non-mutating convention), or **bare** for repos that declare neither (no validation, commit directly). The skill itself never decides what to run and never orchestrates validation — the script is the engine. Claude only reads the result, surfaces the log directory to the user for analysis on failure, writes the commit message, and commits.
 
 Full per-run logs are always written to `.tmp-commit-skill/` at the repo root (the path is emitted as `LOGDIR:` in the script output). The log dir is wiped at the start of every `/commit` invocation and persists after, so the user can inspect raw act or `make check` output without re-running anything.
 
@@ -66,7 +66,7 @@ REASON: <one-line explanation of what was tried and why nothing applied>
 
 **RESULT semantics (act mode):** `pass` = every job act listed ran and passed; `fail` = at least one job failed. There is no unmatched/partial case because the script enumerates jobs directly from `act pull_request --list` rather than matching against an external list of required checks — every job act knows about is a job the script runs.
 
-**DIAGNOSTIC block:** only appears in bare mode and only when the script has actionable fix context (typically: `DOCKER_HOST` could not be resolved for act, with platform-specific commands to start the podman socket or machine). The block is opaque to the skill — surface it to the user verbatim inside the `AskUserQuestion` body so they have a paste-ready fix list.
+**DIAGNOSTIC block:** only appears in bare mode and only when the script has actionable fix context (typically: `DOCKER_HOST` could not be resolved for act, with platform-specific commands to start the podman socket or machine). The block is opaque to the skill — surface it to the user as informational output so they have a paste-ready fix list if they want to enable act for the repo.
 
 **Exit codes:** `0` when validation passed or bare mode was entered (user consent required); `1` when validation failed (any act job or `make check` returned non-zero) OR when the script cannot dispatch at all (not a git repo, invoked from a subdirectory, git broken). On validation failure the summary is still written with per-job details so the skill can parse and report; only the exit code changes.
 
@@ -182,9 +182,9 @@ Assisted-by: Claude Code (Claude Opus 4.6)
    - **`MODE: act, RESULT: pass`** → proceed to Step 5. No question.
    - **`MODE: make, RESULT: pass`** → proceed to Step 5. No question.
    - **`RESULT: fail`** (any mode) → report the failure to the user and **STOP**. Do not commit. Do not ask whether to continue — there is no "commit anyway" path. The report must include: the mode, each failing `CHECK:` job id, a ≤5-line synthesis of each failure tail, the `LOGDIR` path for full logs, and the `DOCKER_HOST` value if present. The user must either fix the failing check or remove it from the workflow before /commit will commit anything.
-   - **`MODE: bare`** → call `AskUserQuestion` showing the `REASON` line, the full DIAGNOSTIC block (if present) verbatim, and the `LOGDIR` path. Options: **Commit without validation** / **Stop**. Stop → halt. Commit without validation → Step 5. Bare mode is the only path where /commit will commit without running validation, and only with explicit user consent on this turn — never assume consent from a prior invocation.
+   - **`MODE: bare`** → proceed to Step 5. No validation was available; commit directly. No user consent needed.
 
-   When composing `AskUserQuestion` bodies, do not paste raw act or `make check` logs — the tail synthesis in the injection is already trimmed for context, and the user can open `$LOGDIR` themselves for the full output. The DIAGNOSTIC block, when present, is the exception: render it verbatim so the user gets a paste-ready fix list.
+   When reporting failures, do not paste raw act or `make check` logs — the tail synthesis in the injection is already trimmed for context, and the user can open `$LOGDIR` themselves for the full output.
 
 5. **Step 5 — Write commit message and commit:**
    Follow the **Conventional Commits rules** section above exactly. Use your actual model name from system context in the `Assisted-by` footer.
