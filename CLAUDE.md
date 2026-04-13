@@ -4,7 +4,7 @@ Claude Code skill for `/commit`. `SKILL.md` at repo root plus bundled helper scr
 
 ## Structure
 
-- `SKILL.md` — `/commit` skill: at skill-load time it calls `scripts/detect-checks.sh` via a `!` injection, reads the machine-readable result, and then either commits the staged changes or routes user consent via `AskUserQuestion` for fail / unmatched / bare cases. Claude does not run any validation commands directly — the script is the engine.
+- `SKILL.md` — `/commit` skill: at skill-load time it calls `scripts/detect-checks.sh` via a `!` injection, reads the machine-readable result, and then either commits the staged changes (pass or bare mode) or reports failure and stops. Claude does not run any validation commands directly — the script is the engine.
 - `scripts/detect-checks.sh` — the validation engine. Enforces repo-root invocation as a precondition, bootstraps `.tmp-commit-skill/`, then cascades through three modes:
   - **act mode** when `act` is installed and `act pull_request --list` returns ≥1 job. Executes every listed job via act with the security-flags template. No `gh` / rulesets dependency — works on private repos without a paid plan and on repos with non-GitHub remotes.
   - **make mode** when a `Makefile` declares a literal `check:` target. Executes `make check`.
