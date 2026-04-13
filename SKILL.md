@@ -68,7 +68,9 @@ REASON: <one-line explanation of what was tried and why nothing applied>
 
 **DIAGNOSTIC block:** only appears in bare mode and only when the script has actionable fix context (typically: `DOCKER_HOST` could not be resolved for act, with platform-specific commands to start the podman socket or machine). The block is opaque to the skill — surface it to the user as informational output so they have a paste-ready fix list if they want to enable act for the repo.
 
-**Exit codes:** `0` when validation passed or bare mode was entered (user consent required); `1` when validation failed (any act job or `make check` returned non-zero) OR when the script cannot dispatch at all (not a git repo, invoked from a subdirectory, git broken). On validation failure the summary is still written with per-job details so the skill can parse and report; only the exit code changes.
+**`MODE: untested`:** written to `$LOGDIR/summary.txt` before the script acquires its global lock. Prevents stale data from a previous run from being misread if the script blocks waiting for another `/commit` to finish. The skill never reads `summary.txt` — it parses the script's stdout. This sentinel exists for external tooling only.
+
+**Exit codes:** `0` when validation passed or bare mode was entered; `1` when validation failed (any act job or `make check` returned non-zero) OR when the script cannot dispatch at all (not a git repo, invoked from a subdirectory, git broken). On validation failure the summary is still written with per-job details so the skill can parse and report; only the exit code changes.
 
 !`~/.claude/skills/commit/scripts/detect-checks.sh`
 
@@ -174,6 +176,7 @@ Assisted-by: Claude Code (Claude Opus 4.6)
 3. **Step 3 — Read validation result:**
    Look at the **Validation (auto-detected)** section above.
    - If the section shows a single diagnostic line (not a git repo, invoked from a subdirectory, git broken), surface that message to the user and STOP. Do not commit.
+   - If the script blocks on the global lock, the bash call goes to background. Wait for the completion event, then parse the stdout output normally.
    - Otherwise, parse the `MODE:`, `RESULT:`, and `LOGDIR:` lines, plus any `CHECK:` / `TARGET:` / `REASON:` lines for the relevant mode. Proceed to Step 4.
 
 4. **Step 4 — Resolve consent:**

@@ -38,16 +38,6 @@
 
 set -u
 
-# ---- Global lock -------------------------------------------------------------
-# Serializes /commit invocations across all repos. Required because act names
-# containers from workflow+job only (no repo path), so concurrent runs in repos
-# with identically named workflows would collide. flock blocks until the lock is
-# available and auto-releases on exit (fd close).
-LOCKFILE="/tmp/claude-commit-skill.lock"
-exec {lock_fd}>"$LOCKFILE" || exit 1
-flock "$lock_fd" || { echo "ERROR: flock() failed: $?" >&2; exit 1; }
-trap "flock -u $lock_fd" EXIT
-
 LOGDIR=".tmp-commit-skill"
 IMG="docker.io/catthehacker/ubuntu:act-22.04@sha256:d83455c10c9a31c9c944a4c5628360c6c374983fa6616bd2439ab88b05ae2046"
 LOGFILE_TAIL_LINES=30
@@ -69,13 +59,24 @@ if [ -n "$PREFIX" ]; then
   exit 1
 fi
 
-# ---- Log dir bootstrap -------------------------------------------------------
-# Wipe at the start of every invocation so logs always reflect the latest run.
-# The .gitignore with '*' keeps contents out of `git status` even if the user
-# has not gitignored the directory itself at the repo root.
+# ---- Log dir bootstrap (pre-lock) -------------------------------------------
+# Wipe and recreate BEFORE acquiring the lock so the agent sees an explicit
+# "untested" state if the script blocks on flock and the bash call times out.
+# Without this, the agent would read stale output from a previous run.
 rm -rf "$LOGDIR"
 mkdir -p "$LOGDIR"
 printf '*\n' > "$LOGDIR/.gitignore"
+printf 'MODE: untested\nREASON: waiting for global lock\n' > "$LOGDIR/summary.txt"
+
+# ---- Global lock -------------------------------------------------------------
+# Serializes /commit invocations across all repos. Required because act names
+# containers from workflow+job only (no repo path), so concurrent runs in repos
+# with identically named workflows would collide. flock blocks until the lock is
+# available and auto-releases on exit (fd close).
+LOCKFILE="/tmp/claude-commit-skill.lock"
+exec {lock_fd}>"$LOCKFILE" || exit 1
+flock "$lock_fd" || { echo "ERROR: flock() failed: $?" >&2; exit 1; }
+trap "flock -u $lock_fd" EXIT
 
 now_iso() {
   date -u '+%Y-%m-%dT%H:%M:%SZ'
