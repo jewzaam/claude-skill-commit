@@ -71,12 +71,41 @@ printf 'MODE: untested\nREASON: waiting for global lock\n' > "$LOGDIR/summary.tx
 # ---- Global lock -------------------------------------------------------------
 # Serializes /commit invocations across all repos. Required because act names
 # containers from workflow+job only (no repo path), so concurrent runs in repos
-# with identically named workflows would collide. flock blocks until the lock is
-# available and auto-releases on exit (fd close).
-LOCKFILE="/tmp/claude-commit-skill.lock"
-exec {lock_fd}>"$LOCKFILE" || exit 1
-flock "$lock_fd" || { echo "ERROR: flock() failed: $?" >&2; exit 1; }
-trap "flock -u $lock_fd" EXIT
+# with identically named workflows would collide.
+#
+# Uses mkdir as the lock primitive — it fails atomically if the directory
+# already exists, and works on every platform (Linux, macOS, Windows/MSYS2).
+# A PID file inside the lock dir detects stale locks from crashed processes.
+LOCKDIR="/tmp/claude-commit-skill.lock"
+PIDFILE="$LOCKDIR/pid"
+
+acquire_lock() {
+  while ! mkdir "$LOCKDIR" 2>/dev/null; do
+    if [ -f "$PIDFILE" ]; then
+      local owner
+      owner=$(cat "$PIDFILE" 2>/dev/null)
+      if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then
+        # Owner is dead — stale lock.
+        rm -rf "$LOCKDIR"
+        continue
+      fi
+    else
+      # Lock dir exists but no PID file — owner crashed between mkdir and
+      # writing the PID, or the file was removed. Either way, stale.
+      rm -rf "$LOCKDIR"
+      continue
+    fi
+    sleep 1
+  done
+  echo $$ > "$PIDFILE"
+}
+
+release_lock() {
+  rm -rf "$LOCKDIR"
+}
+
+acquire_lock
+trap release_lock EXIT
 
 now_iso() {
   date -u '+%Y-%m-%dT%H:%M:%SZ'
