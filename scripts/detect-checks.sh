@@ -316,7 +316,7 @@ run_act_mode() {
 
   write_summary_header act
 
-  local any_fail=0 any_pass=0
+  local any_fail=0 any_pass=0 first_job=1
 
   # Same column-1-numeric filter as the probe count — both must agree or
   # run_act_mode would attempt to execute jobs that the count said didn't
@@ -325,12 +325,21 @@ run_act_mode() {
     [ -z "$job_id" ] && continue
     logfile="$LOGDIR/act-${job_id}.log"
 
+    # --reuse preserves container state across runs. The first job sets up the
+    # container fresh; subsequent jobs reuse it to avoid redundant setup and
+    # file copies.
+    local reuse_flag=()
+    if [ $first_job -eq 0 ]; then
+      reuse_flag=(--reuse)
+    fi
+    first_job=0
+
     if DOCKER_HOST=$DOCKER_HOST_URI act pull_request \
       -P "ubuntu-latest=$IMG" \
       --container-daemon-socket=- \
       --privileged=false \
       --insecure-secrets=false \
-      --reuse \
+      "${reuse_flag[@]}" \
       -j "$job_id" \
       > "$logfile" 2>&1
     then
