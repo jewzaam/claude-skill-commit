@@ -254,22 +254,44 @@ TO FIX:
   return 1
 }
 
-# ---- Stale container reap ----------------------------------------------------
-# act names containers `act-<workflow>-<job>` with no repo path. The --reuse
-# flag is great for in-run efficiency (subsequent jobs in the same /commit run
-# skip setup), but containers left over from a prior /commit run — possibly in
-# a different repo with an identically named workflow — pollute fresh runs and
-# break testing. Reap any `act-*` containers before the probe runs.
+# ---- Stale container + volume reap ------------------------------------------
+# act names containers and volumes `act-<workflow>-<job>...` with no repo path.
+# The --reuse flag is great for in-run efficiency (subsequent jobs in the same
+# /commit run skip setup), but containers left over from a prior /commit run —
+# possibly in a different repo with an identically named workflow — pollute
+# fresh runs and break testing. Reap any `act-*` containers AND their named
+# volumes before the probe runs.
 #
-# Word-splitting on $ids is intentional: podman ps -aq emits one ID per line,
-# and `podman rm -f` accepts space- or newline-separated IDs.
+# Why volumes too: act attaches a named volume at the workspace destination
+# (e.g. /mnt/c/.../<repo>). actions/checkout@v4 does `docker cp` into that
+# volume, but `docker cp` only adds/overwrites files — never deletes files
+# that disappeared from the source. Files removed on the host therefore
+# persist across container removals, because named volumes survive `podman
+# rm -f` (only anonymous volumes are removed by `-v`). Without volume
+# reaping, deleted files keep coming back on every run.
+#
+# Word-splitting on $ids/$vols is intentional: podman emits one ID per line,
+# and `podman rm -f` / `podman volume rm -f` accept space- or
+# newline-separated IDs.
 reap_stale_act_containers() {
   [ -n "$DOCKER_HOST_URI" ] || return 0
   command -v podman >/dev/null 2>&1 || return 0
+
   local ids
   ids=$(DOCKER_HOST=$DOCKER_HOST_URI podman ps -aq --filter 'name=act-' 2>/dev/null)
-  [ -z "$ids" ] && return 0
-  DOCKER_HOST=$DOCKER_HOST_URI podman rm -f $ids > "$LOGDIR/reap.log" 2>&1 || true
+  if [ -n "$ids" ]; then
+    DOCKER_HOST=$DOCKER_HOST_URI podman rm -f $ids > "$LOGDIR/reap.log" 2>&1 || true
+  fi
+
+  # Reap named volumes after the containers are gone, otherwise removal is
+  # blocked. Preserve `act-toolcache` (shared toolchain cache; expensive to
+  # rebuild and never holds project data).
+  local vols
+  vols=$(DOCKER_HOST=$DOCKER_HOST_URI podman volume ls -q --filter 'name=act-' 2>/dev/null \
+         | awk '$0 != "act-toolcache"')
+  if [ -n "$vols" ]; then
+    DOCKER_HOST=$DOCKER_HOST_URI podman volume rm -f $vols >> "$LOGDIR/reap.log" 2>&1 || true
+  fi
 }
 
 # ---- Mode (a): act path probe ------------------------------------------------
