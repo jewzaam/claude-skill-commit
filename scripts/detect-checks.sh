@@ -254,6 +254,24 @@ TO FIX:
   return 1
 }
 
+# ---- Stale container reap ----------------------------------------------------
+# act names containers `act-<workflow>-<job>` with no repo path. The --reuse
+# flag is great for in-run efficiency (subsequent jobs in the same /commit run
+# skip setup), but containers left over from a prior /commit run — possibly in
+# a different repo with an identically named workflow — pollute fresh runs and
+# break testing. Reap any `act-*` containers before the probe runs.
+#
+# Word-splitting on $ids is intentional: podman ps -aq emits one ID per line,
+# and `podman rm -f` accepts space- or newline-separated IDs.
+reap_stale_act_containers() {
+  [ -n "$DOCKER_HOST_URI" ] || return 0
+  command -v podman >/dev/null 2>&1 || return 0
+  local ids
+  ids=$(DOCKER_HOST=$DOCKER_HOST_URI podman ps -aq --filter 'name=act-' 2>/dev/null)
+  [ -z "$ids" ] && return 0
+  DOCKER_HOST=$DOCKER_HOST_URI podman rm -f $ids > "$LOGDIR/reap.log" 2>&1 || true
+}
+
 # ---- Mode (a): act path probe ------------------------------------------------
 # Uses `act pull_request --list` as the single source of truth for what to run.
 # No gh API dependency — rulesets require a paid GitHub plan for private repos
@@ -466,7 +484,7 @@ run_bare_mode() {
 # the user sees why act was skipped.
 docker_host_diagnostic=""
 if resolve_docker_host; then
-  :
+  reap_stale_act_containers
 else
   docker_host_diagnostic="$DOCKER_HOST_REASON"
 fi
