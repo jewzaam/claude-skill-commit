@@ -1,6 +1,5 @@
 ---
 name: commit
-model: sonnet
 description: Run validation locally for staged changes via act or `make check`, then write a Conventional Commits message and commit. When no validation engine applies, commit directly. Invoked explicitly by the user via /commit — do not trigger it automatically.
 disable-model-invocation: true
 allowed-tools: Bash(git diff --staged), Bash(git commit -m *), Bash(~/.claude/skills/commit/scripts/detect-checks.sh)
