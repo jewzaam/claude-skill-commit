@@ -95,18 +95,16 @@ Commit messages follow the rules below. These rules are the canonical source at 
 
 ### Types
 
-Only these types are valid. Pick the most specific one that fits.
+Only these types are valid (Angular convention). Pick the most specific one that fits.
 
 - **feat** — a new feature (MINOR in SemVer)
 - **fix** — a bug fix (PATCH in SemVer)
-- **docs** — documentation-only changes
-- **style** — whitespace, formatting, semicolons, no code-behavior change
-- **refactor** — code change that neither fixes a bug nor adds a feature
-- **perf** — performance improvement
-- **test** — adding or correcting tests
-- **build** — build system, dependency, packaging changes
+- **build** — build system, dependencies, packaging changes
 - **ci** — CI configuration and scripts
-- **chore** — maintenance that doesn't fit another type; do not use as a catch-all when a more specific type applies
+- **docs** — documentation-only changes
+- **perf** — code change that improves performance
+- **refactor** — code change that neither fixes a bug nor adds a feature
+- **test** — adding missing tests or correcting existing tests
 
 ### Scope (optional)
 

@@ -27,5 +27,8 @@ No Makefile, no dependencies, no tests. Changes are tested by invoking `/commit`
 The inlined rules in `SKILL.md` are snapshots of upstream specs, not independent inventions. If upstream changes, flag it as a revision task for this repo — the skill does not auto-follow upstream.
 
 - **Conventional Commits 1.0.0** — <https://www.conventionalcommits.org/en/v1.0.0/>
-  - Source of the type list, title structure, scope syntax, `!` / `BREAKING CHANGE:` footer semantics, and footer token format encoded in the `Conventional Commits rules` section of `SKILL.md`.
+  - Source of title structure, scope syntax, `!` / `BREAKING CHANGE:` footer semantics, and footer token format encoded in the `Conventional Commits rules` section of `SKILL.md`.
   - On upstream version bump or grammar change: review the diff, update the inlined rules, and note the new version in `SKILL.md`.
+- **Angular Commit Message Guidelines** — <https://github.com/angular/angular/blob/main/contributing-docs/commit-message-guidelines.md>
+  - Source of the type list (8 types: feat, fix, build, ci, docs, perf, refactor, test). The Conventional Commits spec mandates only `feat` and `fix`; the full type list follows Angular's current convention, not the defunct AngularJS convention or `@commitlint/config-conventional`.
+  - On upstream change to Angular's type list: review the diff and update the `Types` section in `SKILL.md`.
