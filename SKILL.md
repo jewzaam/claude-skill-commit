@@ -121,6 +121,7 @@ Use a scope when one clearly applies. Omit it for cross-cutting changes.
 - Lowercase first letter unless it's a proper noun.
 - No trailing period.
 - Concrete and specific. "fix: correctness bug" is not acceptable; "fix: drop stale cache entries on TTL expiry" is.
+- Focus on the functional or behavioral change, not which files were modified. For example, "docs: update CLAUDE.md" is wrong when the commit adds a naming convention — the title should be "docs: add naming convention for CLI flags".
 
 ### Breaking changes
 
