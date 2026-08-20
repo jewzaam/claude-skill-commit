@@ -123,6 +123,20 @@ Use a scope when one clearly applies. Omit it for cross-cutting changes.
 - Concrete and specific. "fix: correctness bug" is not acceptable; "fix: drop stale cache entries on TTL expiry" is.
 - Focus on the functional or behavioral change, not which files were modified. For example, "docs: update CLAUDE.md" is wrong when the commit adds a naming convention — the title should be "docs: add naming convention for CLI flags".
 
+### Choosing the subject when a commit bundles several changes
+
+A single commit often stages more than one logical change — a fix, a new flag, a build target, a test. The title names exactly **one** of them: the change with the widest blast radius, not the one the session set out to make. First list the distinct logical changes in the diff, then rank them and title on the top one:
+
+1. A fix to a path that was broken or failing (correctness on a path users already hit) — highest. This is the change someone runs `git log` to find.
+2. A behavioral change on the default path — takes effect with no opt-in.
+3. A new opt-in feature or flag — only affects callers who ask for it.
+4. Build, tooling, or developer-workflow changes.
+5. Tests, formatting, comments — lowest; never the title if anything above it is present.
+
+The **type** follows the change you titled on, not the theme of the work: if the headline is the fix, the type is `fix` even when the same commit also adds a feature. Every change you did not title on goes in the body as a bullet.
+
+Do not anchor the title on the session's stated goal or the theme of recent commits — the diff decides the headline, not the narrative that produced it. A commit that set out to "add `--quick`" but also unbroke context uploads is a `fix` about the uploads, with `--quick` as a body bullet. When two changes are genuinely co-equal and independent, title on the higher-ranked type and tell the user the commit is mixed and could be split — do not silently fold one out of sight.
+
 ### Breaking changes
 
 A breaking change is signaled two ways, and you may use either or both:
