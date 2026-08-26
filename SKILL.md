@@ -125,17 +125,20 @@ Use a scope when one clearly applies. Omit it for cross-cutting changes.
 
 ### Choosing the subject when a commit bundles several changes
 
-A single commit often stages more than one logical change — a fix, a new flag, a build target, a test. The title names exactly **one** of them: the change with the widest blast radius, not the one the session set out to make. First list the distinct logical changes in the diff, then rank them and title on the top one:
+A single commit often stages more than one logical change — a feature, a fix, a build target, a test. First list the distinct logical changes in the diff, then title on the one that **dominates the diff** by share of changed lines and hunks. A large feature is not demoted by a two-line drive-by fix that shipped alongside it; the fix goes in the body.
 
-1. A fix to a path that was broken or failing (correctness on a path users already hit) — highest. This is the change someone runs `git log` to find.
-2. A behavioral change on the default path — takes effect with no opt-in.
-3. A new opt-in feature or flag — only affects callers who ask for it.
-4. Build, tooling, or developer-workflow changes.
-5. Tests, formatting, comments — lowest; never the title if anything above it is present.
+When no single change holds a clear plurality, tiebreak on SemVer impact:
 
-The **type** follows the change you titled on, not the theme of the work: if the headline is the fix, the type is `fix` even when the same commit also adds a feature. Every change you did not title on goes in the body as a bullet.
+1. Breaking change — MAJOR. Also takes `!` and/or the `BREAKING CHANGE:` footer.
+2. New feature or capability — MINOR.
+3. Fix to a path that was broken or failing — PATCH.
+4. Refactor, perf, build, ci, docs, test — no version impact. Never the title if anything above it is present.
 
-Do not anchor the title on the session's stated goal or the theme of recent commits — the diff decides the headline, not the narrative that produced it. A commit that set out to "add `--quick`" but also unbroke context uploads is a `fix` about the uploads, with `--quick` as a body bullet. When two changes are genuinely co-equal and independent, title on the higher-ranked type and tell the user the commit is mixed and could be split — do not silently fold one out of sight.
+Co-equal share between a feature and a fix usually means the fix was part of making the feature work, not an independent regression. An independent regression fix is normally the bulk of its own commit, which the share rule already handles.
+
+<!-- ponytail: share of the diff is a proxy for importance, not importance. A mechanical rename or generated-file churn can outrank a small deliberate change. Revisit only if it bites. -->
+
+The **type** follows the change you titled on, not the theme of the work. The diff decides the headline — not the theme of recent commits. Every change you did not title on goes in the body as a bullet. When two changes are genuinely co-equal and independent, tell the user after committing that the commit is mixed and could be split — do not silently fold one out of sight.
 
 ### Breaking changes
 
