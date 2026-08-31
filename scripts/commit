@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Run checks, ask a read-only harness for a commit message, and commit.
+
+set -euo pipefail
+
+LOGDIR=".tmp-commit-skill"
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+MESSAGE_PROMPT="$SCRIPT_DIR/../references/commit-message-prompt.md"
+CHECKS="$SCRIPT_DIR/util/detect-checks.sh"
+HARNESS="${COMMIT_HARNESS:-claude}"
+MODEL="${COMMIT_MODEL:-sonnet}"
+EFFORT="${COMMIT_EFFORT:-medium}"
+
+prefix=$(git rev-parse --show-prefix 2>/dev/null) || {
+  echo "Not a git repository (cwd: $PWD)" >&2
+  exit 1
+}
+[ -z "$prefix" ] || {
+  echo "Must be invoked from repo root. Currently ${prefix%/} below it." >&2
+  exit 1
+}
+
+git diff --staged --quiet && {
+  echo "Nothing is staged"
+  exit 0
+}
+
+rm -rf "$LOGDIR"
+mkdir -p "$LOGDIR"
+printf '*\n' > "$LOGDIR/.gitignore"
+
+message_prompt() {
+  cat "$MESSAGE_PROMPT"
+  printf '\n--- BEGIN STAGED DIFF ---\n'
+  git diff --staged
+  printf '\n--- END STAGED DIFF ---\n'
+}
+
+generate_message() {
+  local prompt="$LOGDIR/message-prompt.txt"
+  local output="$LOGDIR/message.raw"
+  message_prompt > "$prompt"
+  echo "Generating commit message with $HARNESS/$MODEL..."
+
+  case "$HARNESS" in
+    claude)
+      command -v claude >/dev/null 2>&1 || {
+        echo "Claude is not installed or not on PATH." >&2
+        return 1
+      }
+      if ! claude --tools "" --permission-mode plan \
+        -p "$(<"$prompt")" --model "$MODEL" --effort "$EFFORT" > "$output" 2> "$LOGDIR/harness.log"; then
+        echo "Claude harness failed. See $LOGDIR/harness.log" >&2
+        return 1
+      fi
+      ;;
+    codex)
+      command -v codex >/dev/null 2>&1 || {
+        echo "Codex is not installed or not on PATH." >&2
+        return 1
+      }
+      if ! codex exec --sandbox read-only \
+        --model "$MODEL" -c "model_reasoning_effort=$EFFORT" \
+        "$(<"$prompt")" > "$output" 2> "$LOGDIR/harness.log"; then
+        echo "Codex harness failed. See $LOGDIR/harness.log" >&2
+        return 1
+      fi
+      ;;
+    *)
+      echo "Unsupported COMMIT_HARNESS: $HARNESS (use claude or codex)." >&2
+      return 1
+      ;;
+  esac
+
+  sed -e '1{/^[[:space:]]*$/d;}' -e '${/^[[:space:]]*$/d;}' "$output" > "$LOGDIR/message.txt"
+  local title
+  title=$(head -n1 "$LOGDIR/message.txt")
+  if [ -z "$title" ] || grep -q '^Assisted-by:' "$LOGDIR/message.txt" ||
+     [[ "$title" == *'```'* ]] ||
+     ! [[ "$title" =~ ^(feat|fix|build|ci|docs|perf|refactor|test)(\([^()]+\))?(!)?:[[:space:]][^[:space:]].*$ ]] ||
+     [ "${#title}" -gt 72 ]; then
+    echo "Harness returned an invalid commit message. See $output" >&2
+    return 1
+  fi
+}
+
+echo "Running validation..."
+if ! "$CHECKS"; then
+  echo "No commit was created." >&2
+  exit 1
+fi
+generate_message || {
+  echo "No commit was created." >&2
+  exit 1
+}
+
+case "$HARNESS" in
+  claude) label="Claude Code" ;;
+  codex) label="Codex" ;;
+esac
+printf '\nAssisted-by: %s (%s)\n' "$label" "$MODEL" >> "$LOGDIR/message.txt"
+
+git commit --file "$LOGDIR/message.txt"
+echo "Logs: $LOGDIR/"
+
+echo ""
+
+git log -1
