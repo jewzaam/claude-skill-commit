@@ -1,0 +1,7 @@
+interface:
+  display_name: "Commit"
+  short_description: "Validate staged changes and create a commit"
+  default_prompt: "Use $commit to validate the staged changes and create a Conventional Commit."
+
+policy:
+  allow_implicit_invocation: false
