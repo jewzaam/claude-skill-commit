@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/skills/commit/hooks/record-attribution.py  # KEEP: records the authoring model for Assisted-by trailers"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/skills/commit/hooks/record-attribution.py  # KEEP: drops attribution for repos this session left clean"
+          }
+        ]
+      }
+    ]
+  }
+}
