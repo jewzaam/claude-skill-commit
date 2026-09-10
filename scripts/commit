@@ -6,6 +6,13 @@
 set -euo pipefail
 
 LOGDIR=".tmp-commit-skill"
+# Written by hooks/record-attribution.py, one `<Tool>|<Model>` line per model
+# that changed a file here. Repo-root-relative, so a worktree reads its own.
+# Not under $LOGDIR: that is wiped at the start of every invocation, by this
+# script and by detect-checks.sh independently, and the record has to survive
+# both to accumulate across sessions.
+RECORDDIR=".commit-attribution"
+RECORD="$RECORDDIR/record"
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 MESSAGE_PROMPT="$SCRIPT_DIR/../references/commit-message-prompt.md"
 CHECKS="$SCRIPT_DIR/util/detect-checks.sh"
@@ -100,9 +107,35 @@ case "$HARNESS" in
   claude) label="Claude Code" ;;
   codex) label="Codex" ;;
 esac
-printf '\nAssisted-by: %s (%s)\n' "$label" "$MODEL" >> "$LOGDIR/message.txt"
+
+# The recorded models are the ones that changed these files. $HARNESS/$MODEL is
+# only whoever wrote the message just now, so it is the fallback and nothing
+# more: no hook, no harness support, or a path nothing detected all degrade to
+# exactly today's output rather than to something worse. Dedup is here rather
+# than in the hook because parallel tool calls append concurrently.
+trailers=""
+if [ -s "$RECORD" ]; then
+  trailers=$(awk -F'|' 'NF == 2 && $1 != "" && $2 != "" && !seen[$0]++ {
+    printf "Assisted-by: %s (%s)\n", $1, $2
+  }' "$RECORD")
+fi
+[ -n "$trailers" ] || trailers="Assisted-by: $label ($MODEL)"
+printf '\n%s\n' "$trailers" >> "$LOGDIR/message.txt"
 
 git commit --file "$LOGDIR/message.txt"
+# A successful commit consumes the record; `set -e` means a failed one never
+# reaches here and keeps it for the retry.
+rm -f "$RECORD"
+# The attribution hook fires once more for the shell call that ran this script,
+# and would record whoever committed as an author of whatever is still
+# uncommitted. That is the misattribution this whole mechanism exists to
+# remove, and it is the normal case: code written in one harness, committed in
+# another. The hook deletes this marker and skips exactly that one record.
+# Only when the directory already exists — no hook installed means nothing to
+# suppress, and creating it here would leave an untracked directory behind.
+if [ -d "$RECORDDIR" ]; then
+  : > "$RECORDDIR/skip-next"
+fi
 echo "Logs: $LOGDIR/"
 
 echo ""
