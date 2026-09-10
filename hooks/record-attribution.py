@@ -28,6 +28,13 @@
 # Nothing here asks a model to report its own identity. Codex puts the model in
 # the hook payload; Claude Code does not, so it is read from the transcript the
 # harness itself writes.
+#
+# A sub-agent's work is recorded against the session's model, not the model the
+# sub-agent ran on. Its calls do fire this hook -- they arrive with `agent_id`
+# and `agent_type` set -- but `transcript_path` is the main session transcript,
+# whose assistant entries only ever name the session model. Measured: a haiku
+# sub-agent writing a file recorded `claude-opus-5`. Nothing in the payload
+# carries the sub-agent's model, so this is not fixable here.
 
 import json
 import os
@@ -48,7 +55,9 @@ SKIP_FILE = "skip-next"
 # Tool names that can change a file. Only an optimisation: it saves a `git
 # rev-parse` on every Grep and Read. A harness that does not name the tool in
 # its payload records unconditionally and the purge still sorts it out.
-MUTATORS = {"Bash", "Edit", "MultiEdit", "NotebookEdit", "Task", "Write"}
+# "Agent" and "Task" are the same tool under two names: Claude Code sends
+# "Agent" today, and a sub-agent's own calls arrive as Bash/Write regardless.
+MUTATORS = {"Agent", "Bash", "Edit", "MultiEdit", "NotebookEdit", "Task", "Write"}
 
 PURGE_EVENTS = {"Stop", "SessionEnd"}
 
@@ -87,6 +96,20 @@ def toplevel(path):
     return (out.strip() or None) if out else None
 
 
+def repos_under(directory):
+    """Work-tree roots among the immediate subdirectories of directory."""
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return set()
+    found = set()
+    for name in names:
+        sub = toplevel(os.path.join(directory, name))
+        if sub:
+            found.add(sub)
+    return found
+
+
 def candidate_repos(payload):
     """Every repo this hook fire could concern.
 
@@ -101,14 +124,7 @@ def candidate_repos(payload):
         found.add(top)
     else:
         # A sandbox session starts in a directory *of* repos, not in one.
-        try:
-            names = os.listdir(cwd)
-        except OSError:
-            names = []
-        for name in names:
-            sub = toplevel(os.path.join(cwd, name))
-            if sub:
-                found.add(sub)
+        found |= repos_under(cwd)
 
     for match in ABS_PATH.findall(json.dumps(payload.get("tool_input") or {})):
         directory = match if os.path.isdir(match) else os.path.dirname(match)
@@ -117,6 +133,30 @@ def candidate_repos(payload):
             found.add(sub)
 
     return found
+
+
+def purge_repos(payload):
+    """Every repo a purge has to consider.
+
+    Wider than candidate_repos, because the two events see different things. A
+    PostToolUse carries the path it touched, so recording reaches any repo a
+    tool named; Stop carries only cwd, and a session that recorded into a repo
+    it is no longer sitting in would leave that record for a later commit in
+    that repo to pick up. Sibling repos of the cwd repo are the ones reachable
+    without keeping state between the two events -- a checkout tree
+    (`~/source/*`, `/sandbox/source/*`) is how they sit next to each other.
+
+    A repo outside that tree still keeps a stale record. Purging is safe to
+    widen -- purge() deletes only when the tree is clean -- so if that case
+    shows up, widen here rather than tracking repos across events.
+    """
+    repos = candidate_repos(payload)
+    top = toplevel(payload.get("cwd") or os.getcwd())
+    if top:
+        parent = os.path.dirname(top)
+        if parent and parent != top:
+            repos |= repos_under(parent)
+    return repos
 
 
 def transcript_model(transcript_path):
@@ -222,15 +262,27 @@ def purge(repo):
     along on some later commit it had no part in. This is also what handles a
     change that was made and then reverted.
     """
+    # The skip marker goes regardless of the tree, and before the status check
+    # that might return early. It suppresses the tool call that ran
+    # scripts/commit, and that call's PostToolUse always lands before this
+    # event, so a marker still here is one nothing consumed: the script was run
+    # outside a harness, or the marker arrived with a copy of the repo from
+    # another machine -- `.commit-attribution/` is gitignored, and a sandbox
+    # upload sends ignored files too. Left in place it eats the next real
+    # author instead, silently and possibly sessions later.
+    try:
+        os.remove(os.path.join(repo, RECORD_DIR, SKIP_FILE))
+    except OSError:
+        pass
+
     status = git(repo, "status", "--porcelain")
     # None means git failed. Keeping the record is the safe direction.
     if status is None or status.strip():
         return
-    for name in (RECORD_FILE, SKIP_FILE):
-        try:
-            os.remove(os.path.join(repo, RECORD_DIR, name))
-        except OSError:
-            pass
+    try:
+        os.remove(os.path.join(repo, RECORD_DIR, RECORD_FILE))
+    except OSError:
+        pass
 
 
 def main():
@@ -242,12 +294,13 @@ def main():
         return
 
     event = payload.get("hook_event_name") or ""
-    repos = candidate_repos(payload)
 
     if event in PURGE_EVENTS:
-        for repo in repos:
+        for repo in purge_repos(payload):
             purge(repo)
         return
+
+    repos = candidate_repos(payload)
 
     tool = payload.get("tool_name")
     if tool is not None and tool not in MUTATORS:
