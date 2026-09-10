@@ -164,6 +164,25 @@ def main():
         check(beta.records() == ["Claude Code|claude-opus-5"], "beta: %r" % beta.records())
         check(alpha.records() == [], "untouched repo recorded: %r" % alpha.records())
 
+        # --- Stop reaches a sibling repo, not only the one cwd sits in ---
+        # PostToolUse records into any repo a tool named; Stop is told only
+        # cwd. A repo the session merely read -- `cat /path/in/alpha` from a
+        # shell call in beta is enough -- would otherwise keep an author for
+        # whatever gets committed there next, with nothing to hint at why.
+        fire(
+            "PostToolUse",
+            beta.path,
+            tool="Bash",
+            transcript=transcript,
+            tool_input={"command": "cat %s" % os.path.join(alpha.path, "seed.txt")},
+        )
+        check(alpha.records() == ["Claude Code|claude-opus-5"],
+              "setup: read of alpha recorded nothing: %r" % alpha.records())
+        fire("Stop", beta.path)
+        check(alpha.records() == [], "clean sibling kept a record: %r" % alpha.records())
+        check(beta.records() == ["Claude Code|claude-opus-5"],
+              "dirty sibling was purged: %r" % beta.records())
+
         # --- the record is invisible to git and cannot be staged ---
         check(RECORD.split(os.sep)[0] not in beta.git("status", "--porcelain", "-uall"),
               "record is visible to git status")
@@ -217,6 +236,28 @@ def main():
                 os.path.join(split.path, ".commit-attribution", "skip-next")
             ),
             "purge left a skip marker to eat the next real record",
+        )
+
+        # ...and a dirty tree is not a reason to keep one. The call the marker
+        # exists to suppress fires before this event, so a marker still here
+        # was never consumed -- scripts/commit run outside a harness, or a copy
+        # of the repo carried in from another machine. Keeping it costs the
+        # next real author instead, sessions later and with nothing to show for
+        # it.
+        split.write("still-working.txt", "uncommitted\n")
+        open(os.path.join(split.path, ".commit-attribution", "skip-next"), "w").close()
+        write_transcript(transcript, "claude-opus-5")
+        fire("Stop", split.path)
+        check(
+            not os.path.exists(
+                os.path.join(split.path, ".commit-attribution", "skip-next")
+            ),
+            "dirty tree kept a stale skip marker",
+        )
+        fire("PostToolUse", split.path, tool="Edit", transcript=transcript)
+        check(
+            split.records() == ["Claude Code|claude-opus-5"],
+            "author after a stale marker: %r" % split.records(),
         )
 
         # --- a malformed payload must not crash the session ---
