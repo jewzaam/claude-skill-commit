@@ -82,4 +82,20 @@ Use either or both forms:
 
 ## Input
 
-The staged diff follows below. Base the message only on the changes shown there. Ignore unstaged changes entirely; they must not influence the commit message.
+Two blocks may follow, in this order.
+
+`AUTHOR GUIDANCE` is optional and appears only when the author supplied it. It is their instruction for this message, and it outranks your own reading of the diff. A diff shows the edits and nothing else — not which change is the point and which is incidental, not whether behaviour moved or only shape, not what the work is for. Guessing those from code is where a generated message goes wrong, and this block is the correction.
+
+Follow it. It may direct any part of the message:
+
+- **Type and scope.** "this is a refactor, behaviour is unchanged" makes it `refactor`, whatever the diff looks like on its own. "scope it to the parser" sets the scope.
+- **Emphasis.** Which change leads the title, what belongs in the body, what to leave out as noise.
+- **Motive.** Why the work was done, which the diff cannot contain. Rewrite it in your own words to the rules above rather than pasting it.
+- **Framing.** That a change is a stopgap, a revert, a follow-up, or groundwork for something later.
+
+Two limits, and only two:
+
+- **The rules above still bind, and the type list is closed.** The type is one of `feat`, `fix`, `build`, `ci`, `docs`, `perf`, `refactor`, `test` and nothing else — `chore` in particular is not a type here. Guidance asking for a type off that list means taking the nearest one on it: housekeeping and cleanup are usually `refactor`, dependency or tooling work `build` or `ci`. Title length and grammar bind the same way. A message that breaks any of these is rejected and no commit is made, so serve the guidance as closely as the rules allow rather than breaking one.
+- **Do not state changes the diff does not contain.** Guidance directs how the change is described, never invents a different change. If guidance describes work that is simply not in the diff, describe what is there.
+
+`STAGED DIFF` is what changed and is always present. It is the record of the edits; the guidance is how to read them. Ignore unstaged changes entirely; they must not influence the commit message.

@@ -19,6 +19,22 @@ CHECKS="$SCRIPT_DIR/util/detect-checks.sh"
 HARNESS="${COMMIT_HARNESS:-claude}"
 MODEL="${COMMIT_MODEL:-sonnet}"
 EFFORT="${COMMIT_EFFORT:-medium}"
+# The closed set from references/commit-message-prompt.md, which tracks
+# Angular's list. Used twice below: to validate, and to name the allowed types
+# when a message is rejected for using something else.
+TYPES="feat|fix|build|ci|docs|perf|refactor|test"
+
+# Optional: the author's guidance for the message. A harness reading a raw diff
+# infers intent, framing and emphasis from the code alone and is frequently
+# wrong about all three; this is how the author steers it.
+# Quoting matters — `commit this is a refactor` would pass "this" and silently
+# drop the rest, so anything past one argument is a usage error, not a guess.
+[ "$#" -le 1 ] || {
+  echo "Usage: commit [\"guidance for the commit message\"]" >&2
+  echo "Got $# arguments. Quote the guidance as a single string." >&2
+  exit 1
+}
+GUIDANCE="${1:-}"
 
 prefix=$(git rev-parse --show-prefix 2>/dev/null) || {
   echo "Not a git repository (cwd: $PWD)" >&2
@@ -40,6 +56,9 @@ printf '*\n' > "$LOGDIR/.gitignore"
 
 message_prompt() {
   cat "$MESSAGE_PROMPT"
+  # Omitted entirely when empty, so the harness never sees an empty block and
+  # reads it as the author having nothing to say.
+  [ -z "$GUIDANCE" ] || printf '\n--- BEGIN AUTHOR GUIDANCE ---\n%s\n--- END AUTHOR GUIDANCE ---\n' "$GUIDANCE"
   printf '\n--- BEGIN STAGED DIFF ---\n'
   git diff --staged
   printf '\n--- END STAGED DIFF ---\n'
@@ -86,8 +105,20 @@ generate_message() {
   title=$(head -n1 "$LOGDIR/message.txt")
   if [ -z "$title" ] || grep -q '^Assisted-by:' "$LOGDIR/message.txt" ||
      [[ "$title" == *'```'* ]] ||
-     ! [[ "$title" =~ ^(feat|fix|build|ci|docs|perf|refactor|test)(\([^()]+\))?(!)?:[[:space:]][^[:space:]].*$ ]] ||
+     ! [[ "$title" =~ ^($TYPES)(\([^()]+\))?(!)?:[[:space:]][^[:space:]].*$ ]] ||
      [ "${#title}" -gt 72 ]; then
+    # Name the bad type when that is the problem. Guidance asking for a type
+    # off the list is the likeliest cause — a harness follows the author over
+    # the rules — and the generic message below sends the reader to a log to
+    # work out something the script already knows.
+    # Captured before the next [[ =~ ]], which overwrites BASH_REMATCH.
+    local used=""
+    if [[ "$title" =~ ^([a-zA-Z]+)(\([^()]+\))?!?: ]]; then
+      used="${BASH_REMATCH[1]}"
+    fi
+    if [ -n "$used" ] && ! [[ "$used" =~ ^($TYPES)$ ]]; then
+      echo "Commit type '$used' is not allowed. Use one of: ${TYPES//|/ }" >&2
+    fi
     echo "Harness returned an invalid commit message. See $output" >&2
     return 1
   fi
