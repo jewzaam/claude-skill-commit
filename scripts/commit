@@ -64,6 +64,12 @@ message_prompt() {
   printf '\n--- END STAGED DIFF ---\n'
 }
 
+# The prompt reaches the harness on stdin, never as an argv string. Linux caps
+# a SINGLE argument at MAX_ARG_STRLEN (32 pages = 128 KiB) independently of
+# ARG_MAX, so a staged diff a few hundred KB long fails with "Argument list too
+# long" before the harness starts, on a machine whose ARG_MAX is 2 MiB. Both
+# harnesses read a prompt from stdin: `claude -p` with no positional prompt,
+# and `codex exec -`.
 generate_message() {
   local prompt="$LOGDIR/message-prompt.txt"
   local output="$LOGDIR/message.raw"
@@ -77,7 +83,8 @@ generate_message() {
         return 1
       }
       if ! claude --tools "" --permission-mode plan \
-        -p "$(<"$prompt")" --model "$MODEL" --effort "$EFFORT" > "$output" 2> "$LOGDIR/harness.log"; then
+        -p --model "$MODEL" --effort "$EFFORT" \
+        < "$prompt" > "$output" 2> "$LOGDIR/harness.log"; then
         echo "Claude harness failed. See $LOGDIR/harness.log" >&2
         return 1
       fi
@@ -88,8 +95,8 @@ generate_message() {
         return 1
       }
       if ! codex exec --sandbox read-only \
-        --model "$MODEL" -c "model_reasoning_effort=$EFFORT" \
-        "$(<"$prompt")" > "$output" 2> "$LOGDIR/harness.log"; then
+        --model "$MODEL" -c "model_reasoning_effort=$EFFORT" - \
+        < "$prompt" > "$output" 2> "$LOGDIR/harness.log"; then
         echo "Codex harness failed. See $LOGDIR/harness.log" >&2
         return 1
       fi
