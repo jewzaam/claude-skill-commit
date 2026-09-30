@@ -94,6 +94,7 @@ def main():
         repo.git("commit", "-qm", "seed")
         transcript = os.path.join(root, "t.jsonl")
         write_transcript(transcript, "claude-opus-5")
+        repo.write("work.txt", "work\n")
 
         fire("PostToolUse", repo.path, tool="Bash", transcript=transcript)
         check(repo.records() == ["Claude Code|claude-opus-5"], "claude: %r" % repo.records())
@@ -121,7 +122,7 @@ def main():
         )
 
         # --- Stop purges when the tree is clean ---
-        # Nothing was actually written above, so this repo is clean.
+        os.remove(os.path.join(repo.path, "work.txt"))
         fire("Stop", repo.path)
         check(repo.records() == [], "clean tree kept a record: %r" % repo.records())
 
@@ -149,7 +150,7 @@ def main():
         fire("Stop", codex.path)
         check(codex.records() == ["Codex|gpt-5-codex"], "codex purged early: %r" % codex.records())
 
-        # --- multi-repo: a sibling that was not touched records nothing ---
+        # --- multi-repo: clean siblings are not touched at all ---
         alpha = Repo(root, "alpha")
         beta = Repo(root, "beta")
         for each in (alpha, beta):
@@ -160,15 +161,23 @@ def main():
         write_transcript(transcript, "claude-opus-5")
         # cwd is the directory *of* repos, as in a sandbox.
         fire("PostToolUse", root, tool="Bash", transcript=transcript)
+        check(
+            not os.path.exists(os.path.join(alpha.path, ".commit-attribution")),
+            "clean sibling got attribution metadata",
+        )
+        check(beta.records() == ["Claude Code|claude-opus-5"],
+              "changed repo not attributed before Stop: %r" % beta.records())
         fire("Stop", root)
         check(beta.records() == ["Claude Code|claude-opus-5"], "beta: %r" % beta.records())
         check(alpha.records() == [], "untouched repo recorded: %r" % alpha.records())
+        check(
+            not os.path.exists(os.path.join(alpha.path, ".commit-attribution")),
+            "Stop left metadata in clean sibling",
+        )
 
-        # --- Stop reaches a sibling repo, not only the one cwd sits in ---
-        # PostToolUse records into any repo a tool named; Stop is told only
-        # cwd. A repo the session merely read -- `cat /path/in/alpha` from a
-        # shell call in beta is enough -- would otherwise keep an author for
-        # whatever gets committed there next, with nothing to hint at why.
+        # --- Stop reaches a dirty sibling repo, not only the cwd repo ---
+        # Revert alpha after recording it to verify the wider Stop purge.
+        alpha.write("temporary.txt", "transient\n")
         fire(
             "PostToolUse",
             beta.path,
@@ -177,7 +186,8 @@ def main():
             tool_input={"command": "cat %s" % os.path.join(alpha.path, "seed.txt")},
         )
         check(alpha.records() == ["Claude Code|claude-opus-5"],
-              "setup: read of alpha recorded nothing: %r" % alpha.records())
+              "setup: dirty alpha not recorded: %r" % alpha.records())
+        os.remove(os.path.join(alpha.path, "temporary.txt"))
         fire("Stop", beta.path)
         check(alpha.records() == [], "clean sibling kept a record: %r" % alpha.records())
         check(beta.records() == ["Claude Code|claude-opus-5"],
@@ -245,6 +255,9 @@ def main():
         # next real author instead, sessions later and with nothing to show for
         # it.
         split.write("still-working.txt", "uncommitted\n")
+        os.makedirs(os.path.join(split.path, ".commit-attribution"), exist_ok=True)
+        with open(os.path.join(split.path, ".commit-attribution", ".gitignore"), "w") as handle:
+            handle.write("*\n")
         open(os.path.join(split.path, ".commit-attribution", "skip-next"), "w").close()
         write_transcript(transcript, "claude-opus-5")
         fire("Stop", split.path)

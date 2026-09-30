@@ -228,7 +228,14 @@ def record_path(repo, create):
 
 
 def record(repo, label, model):
-    """Append one author line, unless it is already there."""
+    """Append one author line when the repo has work, unless already there."""
+    status = git(repo, "status", "--porcelain")
+    # Sandbox cwd can make every sibling repo a candidate. Keep clean repos
+    # untouched because timestamp-based sync sees the metadata dir as a change.
+    # If git failed, preserve attribution rather than silently dropping it.
+    if status is not None and not status.strip():
+        return
+
     path = record_path(repo, create=True)
     if path is None:
         return
