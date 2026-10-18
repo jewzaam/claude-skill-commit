@@ -62,8 +62,10 @@ MUTATORS = {"Agent", "Bash", "Edit", "MultiEdit", "NotebookEdit", "Task", "Write
 PURGE_EVENTS = {"Stop", "SessionEnd"}
 
 # Absolute paths as they appear in a serialised tool_input. Deliberately loose:
-# a false candidate costs one `git rev-parse` that returns nothing.
-ABS_PATH = re.compile(r"/[^\s\"',:;()\[\]{}]+")
+# a false candidate costs one `git rev-parse` that returns nothing. A Windows
+# path needs its drive letter to match: json.dumps doubles each backslash, and a
+# bare `\\` would match every escaped newline. normpath collapses the doubling.
+ABS_PATH = re.compile(r"(?:[A-Za-z]:(?:\\\\|/)|/)[^\s\"',:;()\[\]{}]+")
 
 # Enough transcript tail to hold a recent assistant entry. The first line of
 # the chunk is usually truncated mid-JSON; the reverse scan skips it.
@@ -93,7 +95,11 @@ def toplevel(path):
     if not os.path.isdir(path):
         return None
     out = git(path, "rev-parse", "--show-toplevel")
-    return (out.strip() or None) if out else None
+    # normpath so the same repo reached via submodules() is one set entry, not
+    # two -- git prints forward slashes on Windows. Two entries would let one
+    # consume the skip marker and the other record the committer anyway.
+    stripped = out.strip() if out else ""
+    return os.path.normpath(stripped) if stripped else None
 
 
 def repos_under(directory):
@@ -108,6 +114,22 @@ def repos_under(directory):
         if sub:
             found.add(sub)
     return found
+
+
+def submodules(repo):
+    """Work-tree roots of the checked-out submodules of repo, recursively.
+
+    A session sitting in the parent repo names the parent as cwd, and a path
+    into the submodule is not always in the payload -- a relative path in a
+    shell command, a Windows path ABS_PATH does not match. Without this the
+    record lands only in the parent, and a commit made in the submodule falls
+    back to whoever wrote the message. record() skips clean ones, purge() then
+    reaches them, and a skip marker scripts/commit leaves there gets consumed.
+    """
+    out = git(repo, "submodule", "--quiet", "foreach", "--recursive", 'echo "$displaypath"')
+    if not out:
+        return set()
+    return {os.path.normpath(os.path.join(repo, line)) for line in out.splitlines() if line}
 
 
 def candidate_repos(payload):
@@ -127,11 +149,14 @@ def candidate_repos(payload):
         found |= repos_under(cwd)
 
     for match in ABS_PATH.findall(json.dumps(payload.get("tool_input") or {})):
+        match = os.path.normpath(match)
         directory = match if os.path.isdir(match) else os.path.dirname(match)
         sub = toplevel(directory)
         if sub:
             found.add(sub)
 
+    for repo in list(found):
+        found |= submodules(repo)
     return found
 
 
