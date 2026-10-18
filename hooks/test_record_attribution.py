@@ -273,6 +273,29 @@ def main():
             "author after a stale marker: %r" % split.records(),
         )
 
+        # --- submodule: cwd is the parent, the edit is in the submodule ---
+        # No path in the payload names the submodule, as with a relative path
+        # in a shell command. The commit is made in the submodule, so the
+        # record has to be there too, and Stop has to reach it.
+        lib = Repo(root, "lib")
+        lib.write("seed.txt", "seed\n")
+        lib.git("add", "-A")
+        lib.git("commit", "-qm", "seed")
+        parent = Repo(root, "parent")
+        parent.git("-c", "protocol.file.allow=always", "submodule", "add", "-q", lib.path, "sub")
+        parent.git("commit", "-qm", "add sub")
+        sub = Repo.__new__(Repo)
+        sub.path = os.path.join(parent.path, "sub")
+        sub.write("work.txt", "edited in submodule\n")
+        write_transcript(transcript, "claude-opus-5")
+        fire("PostToolUse", parent.path, tool="Bash", transcript=transcript)
+        check(sub.records() == ["Claude Code|claude-opus-5"],
+              "submodule not attributed: %r" % sub.records())
+
+        os.remove(os.path.join(sub.path, "work.txt"))
+        fire("Stop", parent.path)
+        check(sub.records() == [], "Stop did not reach submodule: %r" % sub.records())
+
         # --- a malformed payload must not crash the session ---
         result = subprocess.run(
             [sys.executable, HOOK], input="not json", capture_output=True, text=True
